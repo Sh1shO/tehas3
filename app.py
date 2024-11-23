@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QHeaderView
 from datetime import datetime
 from fpdf import FPDF
 import os
+import re
 
 class LoginWindow(QDialog):
     
@@ -153,6 +154,7 @@ class AddPaymentWindow(QDialog):
 
         self.name_input = QLineEdit(self)
         self.name_input.setFixedWidth(150)
+        self.name_input.textChanged.connect(self.on_name_text_changed)  # Подключаем обработчик
         self.name_layout.addWidget(self.name_input, alignment=Qt.AlignLeft)
 
         self.layout.addLayout(self.name_layout)
@@ -209,6 +211,16 @@ class AddPaymentWindow(QDialog):
             self.category_combo.addItem(category[0])
         session.close()
 
+    def on_name_text_changed(self):
+        """Обработчик изменений текста в поле 'Название платежа'"""
+        name = self.name_input.text()
+        
+        # Проверка на допустимые символы (только русские буквы)
+        if not re.match("^[а-яА-ЯёЁ]+$", name):
+            # Если есть недопустимые символы, убираем их
+            clean_name = re.sub("[^а-яА-ЯёЁ]", "", name)
+            self.name_input.setText(clean_name)
+
     def add_payment(self):
         category = self.category_combo.currentText()
         name = self.name_input.text()
@@ -221,14 +233,27 @@ class AddPaymentWindow(QDialog):
             QMessageBox.warning(self, "Ошибка", "Неверный формат цены!")
             return
 
+        # Проверка на пустое название
         if not name.strip():
             QMessageBox.warning(self, "Ошибка", "Название платежа не может быть пустым!")
             return
 
+        # Проверка на минимальную длину названия
+        if len(name.strip()) < 3:
+            QMessageBox.warning(self, "Ошибка", "Название платежа должно содержать хотя бы 3 буквы!")
+            return
+
+        # Проверка на количество (положительное число)
         if quantity <= 0:
             QMessageBox.warning(self, "Ошибка", "Количество должно быть положительным числом!")
             return
 
+        # Проверка на неотрицательную цену
+        if price < 0:
+            QMessageBox.warning(self, "Ошибка", "Цена не может быть отрицательной!")
+            return
+
+        # Создание нового платежа
         session = get_session()
         new_payment = Payments(
             user_id=self.user.user_id,
@@ -538,6 +563,9 @@ class MainWindow(QWidget):
 
     def load_data(self):
         """Загрузка данных платежей"""
+        self.category_combo.setCurrentText('-')
+        self.date_from.setDate(QDate(2015, 1, 1))
+        self.date_to.setDate(QDate(2024, 1, 1))
         session = get_session()
         payments = session.query(Payments).filter(Payments.user_id == self.user.user_id).all()
         self.table.setRowCount(len(payments))
@@ -548,6 +576,7 @@ class MainWindow(QWidget):
             self.table.setItem(row, 3, QTableWidgetItem(f"{payment.total:.2f}"))
             self.table.setItem(row, 4, QTableWidgetItem(payment.category))
         session.close()
+        # self.
 
     def load_categories(self):
         """Загрузка категорий в выпадающий список"""
